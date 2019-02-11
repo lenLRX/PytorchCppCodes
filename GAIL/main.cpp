@@ -65,7 +65,12 @@ int main(int argc, char** argv) {
     auto shared_critic_net = std::make_shared<Critic>(10, 9, 16);
     auto shared_d_net = std::make_shared<DisCriminator>(10, 9, 16);
 
-    float lr = 1E-3;
+    int count = 34500;
+    load_model(shared_actor_net, "actor", count);
+    load_model(shared_critic_net, "critic", count);
+    load_model(shared_d_net, "discriminator", count);
+
+    float lr = 1E-5;
 
     torch::optim::SGD actor_optim(shared_actor_net->parameters(),
         torch::optim::SGDOptions(lr));
@@ -91,8 +96,6 @@ int main(int argc, char** argv) {
     Env* p_test = new Env(shared_actor_net, shared_critic_net, shared_d_net);
 
     bool expert = true;
-
-    int count = 0;
 
     while (true) {
         count++;
@@ -132,8 +135,8 @@ int main(int argc, char** argv) {
         if (count % 100 == 0) {
             p_test->evaluate();
             save_model(shared_actor_net, "actor", count);
-            save_model(shared_critic_net, "discriminator", count);
-            save_model(shared_d_net, "critic", count);
+            save_model(shared_critic_net, "critic", count);
+            save_model(shared_d_net, "discriminator", count);
         }
         
         /*

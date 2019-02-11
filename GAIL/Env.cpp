@@ -55,7 +55,7 @@ void Env::reset() {
     }
 
     if (!config) {
-        config = ConfigCacheMgr<Config>::getInstance().get("F:\\PytorchCpp\\PytorchCpp\\SimDota2\\config\\Config.json");
+        config = ConfigCacheMgr<Config>::getInstance().get("/root/PytorchCppCodes/SimDota2/config/Config.json");
     }
     engine = new cppSimulatorImp(config);
     clear_state();
@@ -65,7 +65,7 @@ void Env::reset() {
 bool Env::step(bool debug_print, bool default_action) {
     double time_ = engine->get_time();
     //std::cout << "engine time: " << time_ << std::endl;
-    if (time_ > 500) {
+    if (time_ > 200) {
         return false;
     }
     torch::Tensor x = torch::ones({ 10 });
@@ -331,7 +331,7 @@ void Env::evaluate() {
     std::cout << "expert_prob: " << last_expert_prob << std::endl;
     std::cout << "actor_prob: " << last_actor_prob << std::endl;
     std::cout << "last <<<" << std::endl;
-    std::cout << "evaluate total exp " << total_exp << " total hp " << total_hp;
+    std::cout << "evaluate total exp " << total_exp << " total hp " << total_hp << std::endl;
     std::cout << "<<<<<<<<<<<<<<<<<<<<EVALUATE<<<<<<<<<<<<<<<<<<<<<<<<<" << std::endl << std::endl;
 }
 

@@ -45,4 +45,4 @@ add_executable (GAIL_MT
 target_link_libraries(GAIL_MT "${TORCH_LIBRARIES}" cppSimulator)
 set_property(TARGET GAIL_MT PROPERTY CXX_STANDARD 11)
 
-install(TARGETS A3CMain Mini GAIL_MT RUNTIME DESTINATION bin)
+install(TARGETS A3CMain Mini GAIL GAIL_MT RUNTIME DESTINATION bin)

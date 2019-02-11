@@ -51,8 +51,8 @@ public:
         std::shared_ptr<torch::nn::Module> their, float lr) {
         //std::lock_guard<std::mutex> g(mtx);
 
-        auto& mine_params = mine->named_parameters();
-        auto& their_params = their->named_parameters();
+        auto mine_params = mine->named_parameters();
+        auto their_params = their->named_parameters();
 
         for (auto& kv : their_params) {
             auto it = mine_params.find(kv.key());
