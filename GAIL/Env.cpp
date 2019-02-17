@@ -66,7 +66,12 @@ void Env::reset() {
     }
 
     if (!config) {
+        //TODO: better solution
+#ifdef WIN32
+        config = ConfigCacheMgr<Config>::getInstance().get("F:\\PytorchCpp\\PyTorchCpp\\SimDota2\\config\\Config.json");
+#else
         config = ConfigCacheMgr<Config>::getInstance().get("/root/PytorchCppCodes/SimDota2/config/Config.json");
+#endif
     }
     engine = new cppSimulatorImp(config);
     clear_state();
@@ -240,7 +245,7 @@ bool Env::step(bool debug_print, bool default_action) {
     return true;
 }
 
-void Env::train_discriminator(bool print_msg)
+torch::Tensor Env::train_discriminator(bool print_msg)
 {
     torch::Tensor v_expert_prob = torch::stack(vec_expert_prob);
     torch::Tensor expert_label = torch::ones_like(v_expert_prob);
@@ -253,7 +258,7 @@ void Env::train_discriminator(bool print_msg)
     prob_diff = torch::relu(v_expert_prob - v_actor_prob).detach();
 
     torch::Tensor total_d_loss = expert_d_loss + actor_d_loss;
-    total_d_loss.backward(torch::nullopt, true);
+    //total_d_loss.backward(torch::nullopt, true);
 
     if (print_msg) {
         std::stringstream ss;
@@ -271,26 +276,28 @@ void Env::train_discriminator(bool print_msg)
         std::cout << "actor_prob: " << last_actor_prob << std::endl;
         std::cout << "last <<<" << std::endl;
     }
+    return total_d_loss;
 }
 
 
-void Env::train_actor(bool print_msg) {
+torch::Tensor Env::train_actor(bool print_msg) {
     torch::Tensor v_actor_prob_with_grad = torch::stack(actor_prob_with_grad);
     torch::Tensor v_state = torch::stack(states);
     
     torch::Tensor prob = d_model->forward(v_state, v_actor_prob_with_grad);
     torch::Tensor actor_label = torch::ones_like(prob);
     torch::Tensor actor_loss = (torch::relu(torch::binary_cross_entropy(prob, actor_label) - 0.1))*prob_diff.mean();
-    actor_loss.backward();
+    //actor_loss.backward();
 
     if (print_msg) {
         std::stringstream ss;
         ss << "actor model loss " << toNumber<float>(actor_loss);
         std::cout << ss.str() << std::endl;
     }
+    return actor_loss;
 }
 
-void Env::train_critic(bool print_msg)
+torch::Tensor Env::train_critic(bool print_msg)
 {
     reduced_reward = std::vector<float>(exp_rewards.size(), 0.0f);
     float temp_r_exp = 0.0f;
@@ -318,14 +325,14 @@ void Env::train_critic(bool print_msg)
 
     critic_loss = critic_loss * critic_loss;
     critic_loss = critic_loss.mean();
-    critic_loss.backward(torch::nullopt, true);
+    //critic_loss.backward(torch::nullopt, true);
 
     torch::Tensor adv = reward_tensor - vec_values.detach();
     torch::Tensor actor_one_hot = torch::stack(one_hot_tensor);
     torch::Tensor actor_log_probs = torch::sum(torch::stack(log_probs) * actor_one_hot, {1});
     torch::Tensor actor_loss = -actor_log_probs * adv;
     actor_loss = actor_loss.mean();
-    actor_loss.backward(torch::nullopt, true);
+    //actor_loss.backward(torch::nullopt, true);
 
     if (print_msg) {
         std::stringstream ss;
@@ -333,6 +340,7 @@ void Env::train_critic(bool print_msg)
         ss << " actor loss by critic " << toNumber<float>(critic_loss);
         std::cout << ss.str() << std::endl;
     }
+    return critic_loss + actor_loss;
 }
 
 void Env::evaluate() {

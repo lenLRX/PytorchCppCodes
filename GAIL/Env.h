@@ -44,11 +44,11 @@ public:
 
     bool step(bool debug_print = false, bool default_action = false);
 
-    void train_discriminator(bool print_msg = false);
+    torch::Tensor train_discriminator(bool print_msg = false);
 
-    void train_actor(bool print_msg = false);
+    torch::Tensor train_actor(bool print_msg = false);
 
-    void train_critic(bool print_msg = false);
+    torch::Tensor train_critic(bool print_msg = false);
 
     void evaluate();
 
@@ -57,6 +57,8 @@ public:
     void print_summary();
 
     void update();
+
+    torch::Tensor overall_loss;
 
 private:
     cppSimulatorImp* engine;

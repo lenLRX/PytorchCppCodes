@@ -1,5 +1,6 @@
 #include "Env.h"
 #include "util.h"
+#include "ATen/core/TensorImpl.h"
 
 class my_barrier
 {
@@ -54,8 +55,18 @@ std::mutex m2;
 auto thread_fn = [](Env* env, bool first) {
     while (true) {
         barrier2.wait();
+        /*
         env->reset();
         while (env->step(first, false));
+        torch::Tensor d_loss = env->train_discriminator(first);
+        torch::Tensor critic_loss = env->train_critic(first);
+        torch::Tensor actor_loss = env->train_actor(first);
+        env->overall_loss = d_loss + critic_loss + actor_loss;
+        std::stringstream ss;
+        ss << std::this_thread::get_id() << " cpu_id :" << c10::CPUTensorId()
+            << " tensor type " << env->overall_loss.type_id() << "|";
+        std::cerr << ss.str() << std::endl;
+        */
         barrier1.wait();
     }
 };
@@ -93,6 +104,7 @@ int main(int argc, char** argv) {
     for (int i = 0; i < thread_num; ++i) {
         Env* penv = new Env(shared_actor_net, shared_critic_net, shared_d_net);
         vec_env.push_back(penv);
+        //vec_threads.emplace_back(thread_fn, penv, first);
         first = false;
     }
 
@@ -103,42 +115,31 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    torch::Tensor stub = torch::zeros({ 1 });
+
     bool expert = true;
 
     while (true) {
         count++;
-        first = true;
+        std::cerr << "main thread cpu_id :" << c10::CPUTensorId() << std::endl;
+        std::cerr << stub.type_id() << std::endl;
+        //barrier2.wait();
+        //barrier1.wait();
 
-        expert = !expert;
-
-        for (auto env : vec_env) {
-            env->reset();
-            while (env->step(first, expert));
-            first = false;
-        }
-
-        first = true;
         d_optim.zero_grad();
-        for (auto env : vec_env) {
-            env->train_discriminator(first);
-            first = false;
-        }
-        d_optim.step();
-        first = true;
         actor_optim.zero_grad();
         critic_optim.zero_grad();
-        for (auto env : vec_env) {
-            env->train_critic(first);
-            first = false;
-        }
 
-        critic_optim.step();
-        first = true;
+        torch::Tensor total_tensor;
+
         for (auto env : vec_env) {
-            env->train_actor(first);
-            first = false;
+            total_tensor += env->overall_loss;
         }
         
+        total_tensor.backward();
+
+        d_optim.step();
+        critic_optim.step();
         actor_optim.step();
 
         if (count % 100 == 0) {
@@ -148,12 +149,6 @@ int main(int argc, char** argv) {
             save_model(shared_d_net, "discriminator", count);
         }
         
-        /*
-        for (const auto& p : d_optim.parameters())
-        {
-            std::cout << p.grad() << std::endl;
-        }
-        */
     }
 
     return 0;
