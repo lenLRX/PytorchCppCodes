@@ -41,7 +41,7 @@ private:
     int thread_count;
 };
 
-const int thread_num = 2;
+const int thread_num = std::thread::hardware_concurrency();
 
 my_barrier barrier1(thread_num + 1);
 my_barrier barrier2(thread_num + 1);
@@ -61,10 +61,6 @@ auto thread_fn = [](Env* env, bool first) {
         torch::Tensor critic_loss = env->train_critic(first);
         torch::Tensor actor_loss = env->train_actor(first);
         env->overall_loss = d_loss + critic_loss + actor_loss;
-        std::stringstream ss;
-        ss << std::this_thread::get_id() << " cpu_id :" << c10::CPUTensorId()
-            << " tensor type " << env->overall_loss.type_id() << "|";
-        std::cerr << ss.str() << std::endl;
         barrier1.wait();
     }
 };
@@ -113,14 +109,10 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    torch::Tensor stub = torch::zeros({ 1 });
-
     bool expert = true;
 
     while (true) {
         count++;
-        std::cerr << "main thread cpu_id :" << c10::CPUTensorId() << std::endl;
-        std::cerr << stub.type_id() << std::endl;
         barrier2.wait();
         barrier1.wait();
 
