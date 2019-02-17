@@ -11,6 +11,7 @@ cppSimulatorImp::cppSimulatorImp(Config* cfg)
     :cfg(cfg), tick_time(0.0), tick_per_second(cfg->tick_per_second),
     delta_tick(1.0 / cfg->tick_per_second)
 {
+    trace_ = false;
     EventFactory::CreateSpawnEvnt(this);
     Tower::initTowers(this);
     Hero* r_hero = new Hero(this, Side::Radiant, "ShadowFiend");
@@ -19,6 +20,7 @@ cppSimulatorImp::cppSimulatorImp(Config* cfg)
     addSprite(d_hero);
     RadiantHeros.push_back(r_hero);
     DireHeros.push_back(d_hero);
+    trace_record.SetArray();
 }
 
 cppSimulatorImp::~cppSimulatorImp()
@@ -52,7 +54,22 @@ void cppSimulatorImp::loop()
         s->syncData();
     }
 
+    if (trace_) {
+        auto& alloc = trace_record.GetAllocator();
+        Value frame(kArrayType);
+        for (Sprite* s : Sprites) {
+             Value ds(kObjectType);
+             ds.AddMember("type", s->get_UnitType(), alloc);
+             auto pos = s->get_location();
+             ds.AddMember("x", pos.x, alloc);
+             ds.AddMember("y", pos.y, alloc);
+             frame.PushBack(ds, alloc);
+        }
+        trace_record.PushBack(frame, alloc);
+    }
+
     tick_tick();
+
     while (!queue.empty() &&
         queue.top().get_time() < tick_time)
     {

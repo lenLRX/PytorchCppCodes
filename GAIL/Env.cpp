@@ -37,13 +37,24 @@ int get_default(torch::Tensor x) {
     float dist_tower_x = toNumber<float>(x[8]) * near_by_scale;
     float dist_tower_y = toNumber<float>(x[9]) * near_by_scale;
 
+
+    if (toNumber<float>(x[0]) > 0 && toNumber<float>(x[1]) > 0) {
+        return 1;
+    }
+
     if (hypot(dist_tower_x, dist_tower_y) < 1500) {
         return 1;
     }
 
-    if (hypot(dist_creep_x, dist_creep_y) < 600) {
-        return 1;
+    auto dist2creep = hypot(dist_creep_x, dist_creep_y);
+
+    if (dist2creep < 1000) {
+        if (dist2creep < 450) {
+            return 1;
+        }
+        return 0;
     }
+
 
     return 5;
 }
@@ -65,7 +76,7 @@ void Env::reset() {
 bool Env::step(bool debug_print, bool default_action) {
     double time_ = engine->get_time();
     //std::cout << "engine time: " << time_ << std::endl;
-    if (time_ > 200) {
+    if (time_ > 300) {
         return false;
     }
     torch::Tensor x = torch::ones({ 10 });
@@ -183,7 +194,8 @@ bool Env::step(bool debug_print, bool default_action) {
     one_hot_action[idx] = 1;
     one_hot_tensor.push_back(one_hot_action);
     
-    torch::Tensor one_hot_prob = action_prob * one_hot_action;
+    //torch::Tensor one_hot_prob = action_prob * one_hot_action;
+    torch::Tensor one_hot_prob = action_prob * expert_one_hot_action;
     actor_prob_with_grad.push_back(one_hot_prob);
     torch::Tensor actor_prob = d_model->forward(x, one_hot_prob.detach());
     vec_actor_prob.push_back(actor_prob);
@@ -238,8 +250,10 @@ void Env::train_discriminator(bool print_msg)
     torch::Tensor actor_label = torch::zeros_like(v_actor_prob);
     torch::Tensor actor_d_loss = torch::binary_cross_entropy(v_actor_prob, actor_label).mean();
 
+    prob_diff = torch::relu(v_expert_prob - v_actor_prob).detach();
+
     torch::Tensor total_d_loss = expert_d_loss + actor_d_loss;
-    total_d_loss.backward();
+    total_d_loss.backward(torch::nullopt, true);
 
     if (print_msg) {
         std::stringstream ss;
@@ -266,7 +280,7 @@ void Env::train_actor(bool print_msg) {
     
     torch::Tensor prob = d_model->forward(v_state, v_actor_prob_with_grad);
     torch::Tensor actor_label = torch::ones_like(prob);
-    torch::Tensor actor_loss = torch::binary_cross_entropy(prob, actor_label).mean();
+    torch::Tensor actor_loss = (torch::relu(torch::binary_cross_entropy(prob, actor_label) - 0.1))*prob_diff.mean();
     actor_loss.backward();
 
     if (print_msg) {
@@ -304,7 +318,7 @@ void Env::train_critic(bool print_msg)
 
     critic_loss = critic_loss * critic_loss;
     critic_loss = critic_loss.mean();
-    critic_loss.backward();
+    critic_loss.backward(torch::nullopt, true);
 
     torch::Tensor adv = reward_tensor - vec_values.detach();
     torch::Tensor actor_one_hot = torch::stack(one_hot_tensor);
@@ -333,6 +347,13 @@ void Env::evaluate() {
     std::cout << "last <<<" << std::endl;
     std::cout << "evaluate total exp " << total_exp << " total hp " << total_hp << std::endl;
     std::cout << "<<<<<<<<<<<<<<<<<<<<EVALUATE<<<<<<<<<<<<<<<<<<<<<<<<<" << std::endl << std::endl;
+}
+
+std::string Env::record() {
+    reset();
+    engine->set_trace(true);
+    while (step(false, false));
+    return engine->dump_trace();
 }
 
 void Env::print_summary()

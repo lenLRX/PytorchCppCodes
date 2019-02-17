@@ -65,12 +65,15 @@ int main(int argc, char** argv) {
     auto shared_critic_net = std::make_shared<Critic>(10, 9, 16);
     auto shared_d_net = std::make_shared<DisCriminator>(10, 9, 16);
 
-    int count = 34500;
-    load_model(shared_actor_net, "actor", count);
-    load_model(shared_critic_net, "critic", count);
-    load_model(shared_d_net, "discriminator", count);
+    int count = 0;
+    if (argc >= 2) {
+        count = std::atoi(argv[1]);
+        load_model(shared_actor_net, "actor", count);
+        load_model(shared_critic_net, "critic", count);
+        load_model(shared_d_net, "discriminator", count);
+    }
 
-    float lr = 1E-5;
+    float lr = 1E-3;
 
     torch::optim::SGD actor_optim(shared_actor_net->parameters(),
         torch::optim::SGDOptions(lr));
@@ -95,15 +98,22 @@ int main(int argc, char** argv) {
 
     Env* p_test = new Env(shared_actor_net, shared_critic_net, shared_d_net);
 
+    if (argc == 3 && std::string(argv[2]) == "test") {
+        std::cout << p_test->record() << std::endl;
+        return 0;
+    }
+
     bool expert = true;
 
     while (true) {
         count++;
         first = true;
 
+        expert = !expert;
+
         for (auto env : vec_env) {
             env->reset();
-            while (env->step(first, true));
+            while (env->step(first, expert));
             first = false;
         }
 
@@ -114,7 +124,6 @@ int main(int argc, char** argv) {
             first = false;
         }
         d_optim.step();
-
         first = true;
         actor_optim.zero_grad();
         critic_optim.zero_grad();

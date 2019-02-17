@@ -52,6 +52,8 @@ public:
 
     void evaluate();
 
+    std::string record();
+
     void print_summary();
 
     void update();
@@ -89,6 +91,6 @@ private:
     int last_expert_action;
     torch::Tensor last_expert_prob;
     torch::Tensor last_actor_prob;
-
+    torch::Tensor prob_diff;
 
 };

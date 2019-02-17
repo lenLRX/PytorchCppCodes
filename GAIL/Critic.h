@@ -12,7 +12,6 @@ public:
         reset();
         for (auto& param : named_parameters())
         {
-            std::cout << param.key() << ", " << param.value().sizes() << std::endl;
             int dim_ = param.value().dim();
             if (dim_ == 2) {
                 torch::nn::init::xavier_normal_(param.value());
