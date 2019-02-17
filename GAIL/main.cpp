@@ -41,7 +41,7 @@ private:
     int thread_count;
 };
 
-const int thread_num = 1;
+const int thread_num = 2;
 
 my_barrier barrier1(thread_num + 1);
 my_barrier barrier2(thread_num + 1);
@@ -55,7 +55,6 @@ std::mutex m2;
 auto thread_fn = [](Env* env, bool first) {
     while (true) {
         barrier2.wait();
-        /*
         env->reset();
         while (env->step(first, false));
         torch::Tensor d_loss = env->train_discriminator(first);
@@ -66,7 +65,6 @@ auto thread_fn = [](Env* env, bool first) {
         ss << std::this_thread::get_id() << " cpu_id :" << c10::CPUTensorId()
             << " tensor type " << env->overall_loss.type_id() << "|";
         std::cerr << ss.str() << std::endl;
-        */
         barrier1.wait();
     }
 };
@@ -104,7 +102,7 @@ int main(int argc, char** argv) {
     for (int i = 0; i < thread_num; ++i) {
         Env* penv = new Env(shared_actor_net, shared_critic_net, shared_d_net);
         vec_env.push_back(penv);
-        //vec_threads.emplace_back(thread_fn, penv, first);
+        vec_threads.emplace_back(thread_fn, penv, first);
         first = false;
     }
 
@@ -123,20 +121,22 @@ int main(int argc, char** argv) {
         count++;
         std::cerr << "main thread cpu_id :" << c10::CPUTensorId() << std::endl;
         std::cerr << stub.type_id() << std::endl;
-        //barrier2.wait();
-        //barrier1.wait();
+        barrier2.wait();
+        barrier1.wait();
 
         d_optim.zero_grad();
         actor_optim.zero_grad();
         critic_optim.zero_grad();
 
-        torch::Tensor total_tensor;
+        std::vector<torch::Tensor> vec_tensor;
 
         for (auto env : vec_env) {
-            total_tensor += env->overall_loss;
+            vec_tensor.push_back(env->overall_loss);
         }
+
+        torch::Tensor total_loss = torch::stack(vec_tensor);
         
-        total_tensor.backward();
+        total_loss.sum().backward();
 
         d_optim.step();
         critic_optim.step();
