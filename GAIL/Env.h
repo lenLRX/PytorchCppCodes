@@ -7,6 +7,18 @@
 #include "Critic.h"
 #include "DisCriminator.h"
 
+template<typename T>
+T toNumber(torch::Tensor x) {
+    return x.item().to<T>();
+}
+
+struct PackedData {
+    torch::Tensor state;
+    torch::Tensor expert_action;
+    torch::Tensor actor_one_hot;
+    torch::Tensor reward;
+};
+
 class Env
 {
 public:
@@ -29,6 +41,7 @@ public:
 
         states.clear();
         actions.clear();
+        expert_actions.clear();
         values.clear();
         one_hot_tensor.clear();
         hp_rewards.clear();
@@ -49,6 +62,12 @@ public:
     torch::Tensor train_actor(bool print_msg = false);
 
     torch::Tensor train_critic(bool print_msg = false);
+
+    torch::Tensor calculate_reward();
+
+    void update_param();
+
+    PackedData prepare_data();
 
     void evaluate();
 
@@ -75,10 +94,15 @@ private:
     std::shared_ptr<Critic> critic_model;
     std::shared_ptr<DisCriminator> d_model;
 
+    std::shared_ptr<Actor> actor_model_master;
+    std::shared_ptr<Critic> critic_model_master;
+    std::shared_ptr<DisCriminator> d_model_master;
+
     std::shared_ptr<torch::nn::Module> old_actor_model;
 
     std::vector<torch::Tensor> states;
     std::vector<torch::Tensor> actions;
+    std::vector<torch::Tensor> expert_actions;
     std::vector<torch::Tensor> values;
     std::vector<torch::Tensor> one_hot_tensor;
     std::vector<torch::Tensor> actor_prob_with_grad;

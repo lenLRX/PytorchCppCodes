@@ -2,18 +2,13 @@
 
 const float near_by_scale = 2000;
 
-template<typename T>
-T toNumber(torch::Tensor x) {
-    return x.item().to<T>();
-}
-
 
 Env::Env(std::shared_ptr<Actor> actor_model_,
     std::shared_ptr<Critic> critic_model_, 
     std::shared_ptr<DisCriminator> d_model_)
-    :actor_model(actor_model_),
-    critic_model(critic_model_),
-    d_model(d_model_), engine(nullptr), config(nullptr)
+    :actor_model_master(actor_model_),
+    critic_model_master(critic_model_),
+    d_model_master(d_model_), engine(nullptr), config(nullptr)
 {
     df_hp = 0.5f;
     df_exp = 0.5f;
@@ -75,7 +70,7 @@ void Env::reset() {
     }
     engine = new cppSimulatorImp(config);
     clear_state();
-    old_actor_model = actor_model->clone();
+    update_param();
 }
 
 bool Env::step(bool debug_print, bool default_action) {
@@ -189,6 +184,8 @@ bool Env::step(bool debug_print, bool default_action) {
     torch::Tensor expert_prob = d_model->forward(x, expert_one_hot_action);
     vec_expert_prob.push_back(expert_prob);
 
+    expert_actions.push_back(expert_one_hot_action);
+
     hero->set_decision(move);
     pos_tup order = get_move_vec(idx);
     hero->set_move_order(order);
@@ -299,26 +296,8 @@ torch::Tensor Env::train_actor(bool print_msg) {
 
 torch::Tensor Env::train_critic(bool print_msg)
 {
-    reduced_reward = std::vector<float>(exp_rewards.size(), 0.0f);
-    float temp_r_exp = 0.0f;
-    total_exp = 0.0f;
-    float temp_r_hp = 0.0f;
-    total_hp = 0.0f;
-
-    float total_reward = 0.0;
-
-    for (int i = exp_rewards.size() - 1; i >= 0; --i)
-    {
-        total_exp += exp_rewards[i];
-        total_hp += hp_rewards[i];
-
-        temp_r_exp = df_exp * temp_r_exp + exp_rewards[i];
-        temp_r_hp = df_hp * temp_r_hp + hp_rewards[i];
-        reduced_reward[i] = temp_r_exp + temp_r_hp;
-        total_reward += reduced_reward[i];
-    }
-
-    torch::Tensor reward_tensor = torch::from_blob(reduced_reward.data(), c10::IntList(exp_rewards.size()));
+    torch::Tensor reward_tensor = calculate_reward();
+    return reward_tensor;
 
     torch::Tensor vec_values = torch::stack(values);
     torch::Tensor critic_loss = reward_tensor - vec_values;
@@ -341,6 +320,54 @@ torch::Tensor Env::train_critic(bool print_msg)
         std::cout << ss.str() << std::endl;
     }
     return critic_loss + actor_loss;
+}
+
+torch::Tensor Env::calculate_reward()
+{
+    reduced_reward = std::vector<float>(exp_rewards.size(), 0.0f);
+    float temp_r_exp = 0.0f;
+    total_exp = 0.0f;
+    float temp_r_hp = 0.0f;
+    total_hp = 0.0f;
+
+    float total_reward = 0.0;
+
+    torch::Tensor reward_tensor = torch::zeros({ static_cast<long long>(exp_rewards.size()) });
+
+    for (int i = exp_rewards.size() - 1; i >= 0; --i)
+    {
+        total_exp += exp_rewards[i];
+        total_hp += hp_rewards[i];
+
+        temp_r_exp = df_exp * temp_r_exp + exp_rewards[i];
+        temp_r_hp = df_hp * temp_r_hp + hp_rewards[i];
+        reduced_reward[i] = temp_r_exp + temp_r_hp;
+        reward_tensor[i] = reduced_reward[i];
+        total_reward += reduced_reward[i];
+    }
+
+    //torch::Tensor reward_tensor = torch::from_blob(reduced_reward.data(), c10::IntList(exp_rewards.size()));
+    return reward_tensor;
+}
+
+void Env::update_param()
+{
+    actor_model = std::dynamic_pointer_cast<Actor>(actor_model_master->clone());
+    actor_model->eval();
+    critic_model = std::dynamic_pointer_cast<Critic>(critic_model_master->clone());
+    critic_model->eval();
+    d_model = std::dynamic_pointer_cast<DisCriminator>(d_model_master->clone());
+    d_model->eval();
+}
+
+PackedData Env::prepare_data()
+{
+    PackedData ret;
+    ret.state = torch::stack(states);
+    ret.expert_action = torch::stack(expert_actions);
+    ret.actor_one_hot = torch::stack(one_hot_tensor);
+    ret.reward = calculate_reward();
+    return ret;
 }
 
 void Env::evaluate() {

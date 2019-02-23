@@ -2,6 +2,10 @@
 #include "util.h"
 #include "ATen/core/TensorImpl.h"
 
+#include <chrono>
+
+using namespace std::chrono_literals;
+
 class my_barrier
 {
 
@@ -41,7 +45,8 @@ private:
     int thread_count;
 };
 
-const int thread_num = std::thread::hardware_concurrency();
+const int thread_num = std::thread::hardware_concurrency() - 1;
+//const int thread_num = 3;
 
 my_barrier barrier1(thread_num + 1);
 my_barrier barrier2(thread_num + 1);
@@ -52,16 +57,38 @@ std::condition_variable cv2;
 std::mutex m1;
 std::mutex m2;
 
-auto thread_fn = [](Env* env, bool first) {
+class ReplayQueue
+{
+public:
+    ReplayQueue() {}
+
+    void push_back(PackedData data) {
+        std::lock_guard<std::mutex> g(mtx);
+        q_.push_back(data);
+    }
+
+    std::vector<PackedData> get_all() {
+        std::lock_guard<std::mutex> g(mtx);
+        std::vector<PackedData> empty_q;
+        q_.swap(empty_q);
+        return empty_q;
+    }
+
+private:
+    std::mutex mtx;
+    std::vector<PackedData> q_;
+};
+
+ReplayQueue Q;
+
+
+auto thread_fn = [&](Env* env, bool first) {
     while (true) {
-        barrier2.wait();
         env->reset();
         while (env->step(first, false));
-        torch::Tensor d_loss = env->train_discriminator(first);
-        torch::Tensor critic_loss = env->train_critic(first);
-        torch::Tensor actor_loss = env->train_actor(first);
-        env->overall_loss = d_loss + critic_loss + actor_loss;
-        barrier1.wait();
+
+        PackedData data = env->prepare_data();
+        Q.push_back(data);
     }
 };
 
@@ -113,26 +140,72 @@ int main(int argc, char** argv) {
 
     while (true) {
         count++;
-        barrier2.wait();
-        barrier1.wait();
 
-        d_optim.zero_grad();
-        actor_optim.zero_grad();
-        critic_optim.zero_grad();
-
-        std::vector<torch::Tensor> vec_tensor;
-
-        for (auto env : vec_env) {
-            vec_tensor.push_back(env->overall_loss);
+        std::vector<PackedData> datas = Q.get_all();
+        
+        if (datas.empty())
+        {
+            std::this_thread::sleep_for(std::chrono::seconds(1s));
+            continue;
         }
 
-        torch::Tensor total_loss = torch::stack(vec_tensor);
+        if (datas.size() > std::thread::hardware_concurrency()) {
+            datas.resize(std::thread::hardware_concurrency());
+        }
         
-        total_loss.sum().backward();
+        for (auto data : datas)
+        {
+            d_optim.zero_grad();
+            
 
-        d_optim.step();
-        critic_optim.step();
-        actor_optim.step();
+            torch::Tensor expert_prob = shared_d_net->forward(data.state, data.expert_action);
+            torch::Tensor expert_label = torch::ones_like(expert_prob);
+            torch::Tensor expert_d_loss = torch::binary_cross_entropy(expert_prob, expert_label).mean();
+
+            torch::Tensor actor_action_prob = torch::softmax(shared_actor_net->forward(data.state), 1);
+            torch::Tensor actor_prob = shared_d_net->forward(data.state, (actor_action_prob * data.actor_one_hot).detach());
+            torch::Tensor actor_label = torch::zeros_like(actor_prob);
+            torch::Tensor actor_d_loss = torch::binary_cross_entropy(actor_prob, actor_label).mean();
+
+            torch::Tensor prob_diff = torch::relu(expert_prob - actor_prob).detach();
+
+            torch::Tensor total_d_loss = expert_d_loss + actor_d_loss;
+
+            total_d_loss.backward();
+
+            d_optim.step();
+
+            actor_optim.zero_grad();
+            critic_optim.zero_grad();
+
+            torch::Tensor actor_prob2 = shared_d_net->forward(data.state, actor_action_prob * data.expert_action);
+            torch::Tensor actor_label2 = torch::ones_like(actor_prob2);
+
+            torch::Tensor actor_d_loss2 = (torch::relu(torch::binary_cross_entropy(actor_prob2, actor_label2) - 0.1))*prob_diff.mean();
+
+            torch::Tensor values = shared_critic_net->forward(data.state);
+            torch::Tensor critic_loss = data.reward - values;
+            critic_loss = critic_loss * critic_loss;
+            critic_loss = critic_loss.mean();
+
+            torch::Tensor adv = data.reward - values.detach();
+
+            torch::Tensor actor_log_probs = torch::log(torch::sum(actor_action_prob * data.actor_one_hot, 1));
+            torch::Tensor actor_loss = -actor_log_probs * adv;
+            actor_loss = actor_loss.mean();
+
+            torch::Tensor total_loss = actor_d_loss2 + actor_loss + critic_loss;
+            total_loss.backward();
+
+            std::stringstream ss;
+            ss << "training loss " << toNumber<float>(total_loss) << std::endl;
+            //std::cerr << ss.str() << std::endl;
+
+            critic_optim.step();
+            actor_optim.step();
+        }
+
+        
 
         if (count % 100 == 0) {
             p_test->evaluate();
