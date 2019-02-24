@@ -25,33 +25,93 @@ pos_tup get_move_vec(int dir) {
     return out_;
 }
 
+int get_move_dir(float x, float y) {
+    if (fabs(x) < 0.1) {
+        if (fabs(y) < 0.1) {
+            return 0;
+        }
+        if (y < 0) {
+            return 2;
+        }
+
+        if (y > 0) {
+            return 6;
+        }
+    }
+    if (x < 0) {
+        if (fabs(y) < 0.1) {
+            return 8;
+        }
+        if (y < 0) {
+            return 1;
+        }
+
+        if (y > 0) {
+            return 7;
+        }
+    }
+
+    if (x > 0) {
+        if (fabs(y) < 0.1) {
+            return 4;
+        }
+        if (y < 0) {
+            return 3;
+        }
+
+        if (y > 0) {
+            return 5;
+        }
+    }
+}
+
 int get_default(torch::Tensor x) {
+    float dist_ally_creep_x = toNumber<float>(x[2]) * near_by_scale;
+    float dist_ally_creep_y = toNumber<float>(x[3]) * near_by_scale;
+
     float dist_creep_x = toNumber<float>(x[4]) * near_by_scale;
     float dist_creep_y = toNumber<float>(x[5]) * near_by_scale;
 
     float dist_tower_x = toNumber<float>(x[8]) * near_by_scale;
     float dist_tower_y = toNumber<float>(x[9]) * near_by_scale;
 
-
+    /*
     if (toNumber<float>(x[0]) > 0 && toNumber<float>(x[1]) > 0) {
         return 1;
     }
+    */
 
-    if (hypot(dist_tower_x, dist_tower_y) < 1500) {
+
+    if (hypot(dist_tower_x, dist_tower_y) < 1200) {
         return 1;
     }
 
-    auto dist2creep = hypot(dist_creep_x, dist_creep_y);
+    if (fabs(dist_creep_x - near_by_scale) < 0.1 && fabs(dist_creep_y - near_by_scale) < 0.1) {
+        return 5;
+    }
 
-    if (dist2creep < 1000) {
-        if (dist2creep < 450) {
-            return 1;
-        }
-        return 0;
+    if (fabs(dist_ally_creep_x - near_by_scale) < 0.1 && fabs(dist_ally_creep_y - near_by_scale) < 0.1) {
+        return 1;
     }
 
 
-    return 5;
+    float mid_x = 0.5f * (dist_ally_creep_x + dist_creep_x);
+    float mid_y = 0.5f * (dist_ally_creep_y + dist_creep_y);
+
+    float _500_edge = 353.5f;
+
+    float target_point_x = mid_x - _500_edge;
+    float target_point_y = mid_y - _500_edge;
+
+    auto dist2target = hypot(target_point_x, target_point_y);
+
+    if (dist2target < 50) {
+        return 0;
+    }
+    
+    int move_dir = get_move_dir(target_point_x, target_point_y);
+
+    return move_dir;
 }
 
 void Env::reset() {
@@ -76,7 +136,7 @@ void Env::reset() {
 bool Env::step(bool debug_print, bool default_action) {
     double time_ = engine->get_time();
     //std::cout << "engine time: " << time_ << std::endl;
-    if (time_ > 400) {
+    if (time_ > 200) {
         return false;
     }
     torch::Tensor x = torch::ones({ 10 });
