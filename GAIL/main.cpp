@@ -4,7 +4,6 @@
 
 #include <chrono>
 
-using namespace std::chrono_literals;
 
 class my_barrier
 {
@@ -93,9 +92,9 @@ auto thread_fn = [&](Env* env, bool first) {
 };
 
 int main(int argc, char** argv) {
-    auto shared_actor_net = std::make_shared<Actor>(10, 9, 16);
-    auto shared_critic_net = std::make_shared<Critic>(10, 9, 16);
-    auto shared_d_net = std::make_shared<DisCriminator>(10, 9, 16);
+    auto shared_actor_net = std::make_shared<Actor>(10, 9, 128);
+    auto shared_critic_net = std::make_shared<Critic>(10, 9, 128);
+    auto shared_d_net = std::make_shared<DisCriminator>(10, 9, 128);
 
     int count = 0;
     if (argc >= 2) {
@@ -103,6 +102,13 @@ int main(int argc, char** argv) {
         load_model(shared_actor_net, "actor", count);
         load_model(shared_critic_net, "critic", count);
         load_model(shared_d_net, "discriminator", count);
+    }
+
+    Env* p_test = new Env(shared_actor_net, shared_critic_net, shared_d_net);
+
+    if (argc == 3 && std::string(argv[2]) == "test") {
+        std::cout << p_test->record() << std::endl;
+        return 0;
     }
 
     float lr = 1E-3;
@@ -129,23 +135,15 @@ int main(int argc, char** argv) {
         first = false;
     }
 
-    Env* p_test = new Env(shared_actor_net, shared_critic_net, shared_d_net);
-
-    if (argc == 3 && std::string(argv[2]) == "test") {
-        std::cout << p_test->record() << std::endl;
-        return 0;
-    }
-
     bool expert = true;
 
     while (true) {
-        count++;
 
         std::vector<PackedData> datas = Q.get_all();
         
         if (datas.empty())
         {
-            std::this_thread::sleep_for(std::chrono::seconds(1s));
+            std::this_thread::sleep_for(std::chrono::seconds(1));
             continue;
         }
 
@@ -155,6 +153,7 @@ int main(int argc, char** argv) {
         
         for (auto data : datas)
         {
+            count++;
             d_optim.zero_grad();
             
 
@@ -203,17 +202,14 @@ int main(int argc, char** argv) {
 
             critic_optim.step();
             actor_optim.step();
+            if (count % 100 == 0) {
+                p_test->evaluate();
+                save_model(shared_actor_net, "actor", count);
+                save_model(shared_critic_net, "critic", count);
+                save_model(shared_d_net, "discriminator", count);
+            }
         }
-
-        
-
-        if (count % 100 == 0) {
-            p_test->evaluate();
-            save_model(shared_actor_net, "actor", count);
-            save_model(shared_critic_net, "critic", count);
-            save_model(shared_d_net, "discriminator", count);
-        }
-        
+       
     }
 
     return 0;

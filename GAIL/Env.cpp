@@ -10,8 +10,8 @@ Env::Env(std::shared_ptr<Actor> actor_model_,
     critic_model_master(critic_model_),
     d_model_master(d_model_), engine(nullptr), config(nullptr)
 {
-    df_hp = 0.5f;
-    df_exp = 0.5f;
+    df_hp = 0.9f;
+    df_exp = 0.9f;
 }
 
 pos_tup get_move_vec(int dir) {
@@ -76,7 +76,7 @@ void Env::reset() {
 bool Env::step(bool debug_print, bool default_action) {
     double time_ = engine->get_time();
     //std::cout << "engine time: " << time_ << std::endl;
-    if (time_ > 300) {
+    if (time_ > 400) {
         return false;
     }
     torch::Tensor x = torch::ones({ 10 });
