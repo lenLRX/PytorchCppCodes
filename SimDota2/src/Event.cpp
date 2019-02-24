@@ -31,5 +31,5 @@ static void spawn_fn(cppSimulatorImp* Engine) {
 void EventFactory::CreateSpawnEvnt(cppSimulatorImp* Engine)
 {
     std::function<void()> fn = std::bind(spawn_fn, Engine);
-    Engine->get_queue().push(Event(Engine->get_time() + 90,fn));
+    Engine->get_queue().push(Event(Engine->get_time() + 30,fn));
 }
