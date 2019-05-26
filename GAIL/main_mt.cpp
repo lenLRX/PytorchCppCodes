@@ -78,9 +78,9 @@ int main(int argc, char** argv) {
     auto d_model = std::make_shared<DisCriminator>(10, 9, 16);
 
     int count = 26300;
-    load_model(actor_model, "actor", count);
-    load_model(critic_model, "discriminator", count);
-    load_model(d_model, "critic", count);
+    //load_model(actor_model, "actor", count);
+    //load_model(critic_model, "discriminator", count);
+    //load_model(d_model, "critic", count);
 
     int cpu_num = std::thread::hardware_concurrency();
     std::cout << "concurrent num " << cpu_num << std::endl;

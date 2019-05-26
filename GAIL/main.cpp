@@ -1,6 +1,5 @@
 #include "Env.h"
 #include "util.h"
-#include "ATen/core/TensorImpl.h"
 
 #include <chrono>
 
@@ -44,7 +43,7 @@ private:
     int thread_count;
 };
 
-const int thread_num = std::thread::hardware_concurrency() - 1;
+const int thread_num = std::thread::hardware_concurrency();
 //const int thread_num = 3;
 
 my_barrier barrier1(thread_num + 1);
@@ -81,16 +80,6 @@ private:
 ReplayQueue Q;
 
 
-auto thread_fn = [&](Env* env, bool first) {
-    while (true) {
-        env->reset();
-        while (env->step(first, false));
-
-        PackedData data = env->prepare_data();
-        Q.push_back(data);
-    }
-};
-
 int main(int argc, char** argv) {
     auto shared_actor_net = std::make_shared<Actor>(10, 9, 128);
     auto shared_critic_net = std::make_shared<Critic>(10, 9, 128);
@@ -111,7 +100,7 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    float lr = 1E-3;
+    float lr = 1E-5;
 
     torch::optim::SGD actor_optim(shared_actor_net->parameters(),
         torch::optim::SGDOptions(lr));
@@ -131,11 +120,26 @@ int main(int argc, char** argv) {
     for (int i = 0; i < thread_num; ++i) {
         Env* penv = new Env(shared_actor_net, shared_critic_net, shared_d_net);
         vec_env.push_back(penv);
+        auto thread_fn = [&](Env* env, bool first) {
+            while (true) {
+                env->reset();
+                while (env->step(first, false));
+
+                PackedData data = env->prepare_data();
+                Q.push_back(data);
+            }
+        };
+
         vec_threads.emplace_back(thread_fn, penv, first);
         first = false;
     }
 
     bool expert = true;
+
+    shared_actor_net->to(torch::kCUDA);
+    shared_critic_net->to(torch::kCUDA);
+    shared_d_net->to(torch::kCUDA);
+
 
     while (true) {
 
@@ -151,11 +155,15 @@ int main(int argc, char** argv) {
             datas.resize(std::thread::hardware_concurrency());
         }
         
-        for (auto data : datas)
+        for (auto& data : datas)
         {
             count++;
             d_optim.zero_grad();
-            
+
+            data.state = data.state.to(torch::kCUDA);
+            data.expert_action = data.expert_action.to(torch::kCUDA);
+            data.actor_one_hot = data.actor_one_hot.to(torch::kCUDA);
+            data.reward = data.reward.to(torch::kCUDA);
 
             torch::Tensor expert_prob = shared_d_net->forward(data.state, data.expert_action);
             torch::Tensor expert_label = torch::ones_like(expert_prob);
@@ -198,7 +206,6 @@ int main(int argc, char** argv) {
 
             std::stringstream ss;
             ss << "training loss " << toNumber<float>(total_loss) << std::endl;
-            //std::cerr << ss.str() << std::endl;
 
             critic_optim.step();
             actor_optim.step();
