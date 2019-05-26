@@ -125,7 +125,7 @@ void Env::reset() {
 #ifdef WIN32
         config = ConfigCacheMgr<Config>::getInstance().get("F:\\PytorchCpp\\PyTorchCpp\\SimDota2\\config\\Config.json");
 #else
-        config = ConfigCacheMgr<Config>::getInstance().get("/root/PytorchCppCodes/SimDota2/config/Config.json");
+        config = ConfigCacheMgr<Config>::getInstance().get("/home/len/PytorchCppCodes/SimDota2/config/Config.json");
 #endif
     }
     engine = new cppSimulatorImp(config);
@@ -136,7 +136,7 @@ void Env::reset() {
 bool Env::step(bool debug_print, bool default_action) {
     double time_ = engine->get_time();
     //std::cout << "engine time: " << time_ << std::endl;
-    if (time_ > 200) {
+    if (time_ > 500) {
         return false;
     }
     torch::Tensor x = torch::ones({ 10 });
@@ -414,10 +414,13 @@ void Env::update_param()
 {
     actor_model = std::dynamic_pointer_cast<Actor>(actor_model_master->clone());
     actor_model->eval();
+    actor_model->to(torch::kCPU);
     critic_model = std::dynamic_pointer_cast<Critic>(critic_model_master->clone());
     critic_model->eval();
+    critic_model->to(torch::kCPU);
     d_model = std::dynamic_pointer_cast<DisCriminator>(d_model_master->clone());
     d_model->eval();
+    d_model->to(torch::kCPU);
 }
 
 PackedData Env::prepare_data()
