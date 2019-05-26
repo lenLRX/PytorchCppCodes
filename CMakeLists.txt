@@ -45,4 +45,17 @@ add_executable (GAIL_MT
 target_link_libraries(GAIL_MT "${TORCH_LIBRARIES}" cppSimulator)
 set_property(TARGET GAIL_MT PROPERTY CXX_STANDARD 11)
 
-install(TARGETS A3CMain Mini GAIL GAIL_MT RUNTIME DESTINATION bin)
+add_executable (GAIL_Tree 
+"GAIL_Tree/util.h"
+"GAIL_Tree/Actor.h" "GAIL_Tree/DisCriminator.h"
+"GAIL_Tree/Env.cpp" "GAIL_Tree/Env.h"
+"GAIL_Tree/Models.h" "GAIL_Tree/Models.cpp"
+"GAIL_Tree/ActionChoice.h" "GAIL_Tree/ActionChoice.cpp"
+"GAIL_Tree/LastHitMode.h" "GAIL_Tree/LastHitMode.cpp"
+"GAIL_Tree/MovingMode.h" "GAIL_Tree/MovingMode.cpp"
+"GAIL_Tree/Critic.h" "GAIL_Tree/main.cpp")
+
+target_link_libraries(GAIL_Tree "${TORCH_LIBRARIES}" cppSimulator)
+set_property(TARGET GAIL_Tree PROPERTY CXX_STANDARD 11)
+
+install(TARGETS A3CMain Mini GAIL GAIL_MT GAIL_Tree RUNTIME DESTINATION bin)

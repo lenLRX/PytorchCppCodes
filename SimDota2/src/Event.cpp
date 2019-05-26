@@ -6,6 +6,9 @@
 
 void EventFactory::CreateAttackEvnt(Sprite* attacker, Sprite* victim)
 {
+    if (attacker == nullptr || victim == nullptr) {
+        return;
+    }
     cppSimulatorImp* engine = attacker->get_engine();
     auto fn = [=]() {
         double actualDmg = victim->attakedDmg(attacker, attacker->get_Attack());
