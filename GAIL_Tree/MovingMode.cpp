@@ -1,58 +1,7 @@
 #include "MovingMode.h"
 #include "util.h"
 
-static pos_tup get_move_vec(int dir) {
-    pos_tup out_(0, 0);
-    if (dir == 0) {
-        return out_;
-    }
-    double rad = dir * M_PI / 4 - M_PI;
-    out_.x = cos(rad) * 300;
-    out_.y = sin(rad) * 300;
-    return out_;
-}
-
-static int get_move_dir(float x, float y) {
-    if (fabs(x) < 0.1) {
-        if (fabs(y) < 0.1) {
-            return 0;
-        }
-        if (y < 0) {
-            return 2;
-        }
-
-        if (y > 0) {
-            return 6;
-        }
-    }
-    if (x < 0) {
-        if (fabs(y) < 0.1) {
-            return 8;
-        }
-        if (y < 0) {
-            return 1;
-        }
-
-        if (y > 0) {
-            return 7;
-        }
-    }
-
-    if (x > 0) {
-        if (fabs(y) < 0.1) {
-            return 4;
-        }
-        if (y < 0) {
-            return 3;
-        }
-
-        if (y > 0) {
-            return 5;
-        }
-    }
-}
-
-static int get_default(torch::Tensor x) {
+static int get_default(const torch::Tensor& x) {
     float dist_ally_creep_x = toNumber<float>(x[2]) * near_by_scale;
     float dist_ally_creep_y = toNumber<float>(x[3]) * near_by_scale;
 
@@ -94,14 +43,12 @@ static int get_default(torch::Tensor x) {
     return move_dir;
 }
 
-void MovingMode::step(cppSimulatorImp * engine, bool default_action)
+void MovingMode::step_impl(cppSimulatorImp * engine, bool default_action)
 {
     torch::Tensor x = torch::ones({ 10 });
     auto hero = engine->getHero("Radiant", 0);
 
     auto hero_loc = hero->get_location();
-    float prev_exp = hero->getData().exp;
-    float prev_hp = hero->get_HP();
     //std::cout << "hero pos " << hero_loc.toString() << std::endl;
 
     x[0] = hero_loc.x / 7000;
@@ -159,24 +106,13 @@ void MovingMode::step(cppSimulatorImp * engine, bool default_action)
 
     auto out = actor_->forward(x);
 
-    auto action_out = out;
-    auto action_log_prob = torch::log_softmax(action_out, 0);
+    auto action_log_prob = torch::log_softmax(out, 0);
 
-    auto action_prob = torch::softmax(action_out, 0);
-    float max_prob = toNumber<float>(torch::max(action_prob));
+    auto action_prob = torch::softmax(out, 0);
 
     auto action = action_prob.multinomial(1);
 
     int idx = toNumber<int>(action);
-
-
-    if (false || max_prob > 0.9)
-    {
-        auto max_action = torch::argmax(action_prob, 0);
-        int max_idx = toNumber<int>(max_action);
-        //std::cout << max_prob << std::endl;
-        idx = max_idx;
-    }
 
     int default_idx = get_default(x);
 
@@ -199,8 +135,12 @@ void MovingMode::step(cppSimulatorImp * engine, bool default_action)
     hero->set_move_order(order);
 }
 
-void MovingMode::train(const std::vector<PackedData>& data) {
+void MovingMode::train(const std::vector<PackedData>& data, int episode) {
     if (data.empty()) {
+        return;
+    }
+
+    if (!is_cuda()) {
         return;
     }
 
@@ -213,14 +153,22 @@ void MovingMode::train(const std::vector<PackedData>& data) {
     torch::optim::SGD d_optim(discriminator_->parameters(),
         torch::optim::SGDOptions(lr));
     for (auto& d : data) {
+        if (d.empty()) {
+            continue;
+        }
         d_optim.zero_grad();
+
+        torch::Tensor state = d.at("state").to(torch::kCUDA);
+        torch::Tensor expert_action = d.at("expert_action").to(torch::kCUDA);
+        torch::Tensor actor_one_hot = d.at("actor_one_hot").to(torch::kCUDA);
+        torch::Tensor reward = d.at("reward").to(torch::kCUDA);
         
-        torch::Tensor expert_prob = discriminator_->forward(d.at("state"), d.at("expert_action"));
+        torch::Tensor expert_prob = discriminator_->forward(state, expert_action);
         torch::Tensor expert_label = torch::ones_like(expert_prob);
         torch::Tensor expert_d_loss = torch::binary_cross_entropy(expert_prob, expert_label).mean();
 
-        torch::Tensor actor_action_prob = torch::softmax(actor_->forward(d.at("state")), 1);
-        torch::Tensor actor_prob = discriminator_->forward(d.at("state"), (actor_action_prob * d.at("actor_one_hot")).detach());
+        torch::Tensor actor_action_prob = torch::softmax(actor_->forward(state), 1);
+        torch::Tensor actor_prob = discriminator_->forward(state, (actor_action_prob * actor_one_hot).detach());
         torch::Tensor actor_label = torch::zeros_like(actor_prob);
         torch::Tensor actor_d_loss = torch::binary_cross_entropy(actor_prob, actor_label).mean();
 
@@ -235,29 +183,30 @@ void MovingMode::train(const std::vector<PackedData>& data) {
         actor_optim.zero_grad();
         critic_optim.zero_grad();
 
-        torch::Tensor actor_prob2 = discriminator_->forward(d.at("state"), actor_action_prob * d.at("expert_action"));
+        torch::Tensor actor_prob2 = discriminator_->forward(state, actor_action_prob * expert_action);
         torch::Tensor actor_label2 = torch::ones_like(actor_prob2);
 
         torch::Tensor actor_d_loss2 = (torch::relu(torch::binary_cross_entropy(actor_prob2, actor_label2) - 0.1))*prob_diff.mean();
 
-        torch::Tensor values = critic_->forward(d.at("state"));
-        torch::Tensor critic_loss = d.at("reward") - values;
+        torch::Tensor values = critic_->forward(state);
+        torch::Tensor critic_loss = reward - values;
         critic_loss = critic_loss * critic_loss;
         critic_loss = critic_loss.mean();
 
-        torch::Tensor adv = d.at("reward") - values.detach();
+        torch::Tensor adv = reward - values.detach();
 
-        torch::Tensor actor_log_probs = torch::log(torch::sum(actor_action_prob * d.at("actor_actions"), 1));
+        torch::Tensor actor_log_probs = torch::log(torch::sum(actor_action_prob * actor_one_hot, 1));
         torch::Tensor actor_loss = -actor_log_probs * adv;
         actor_loss = actor_loss.mean();
 
         torch::Tensor total_loss = actor_d_loss2 + actor_loss + critic_loss;
         total_loss.backward();
 
-        std::stringstream ss;
-        //ss << "training loss " << toNumber<float>(total_loss) << std::endl;
-        //std::cerr << ss.str() << std::endl;
+        auto logger = spdlog::get("loss_logger");
+
+        logger->info("episode {} {}, training loss: {}", episode, type(), toNumber<float>(total_loss));
 
         critic_optim.step();
+        actor_optim.step();
     }
 }

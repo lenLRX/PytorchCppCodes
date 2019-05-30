@@ -5,8 +5,8 @@
 class Critic : public torch::nn::Cloneable<Critic>
 {
 public:
-    Critic(int state_dim, int action_dim, int hidden_dim)
-        : state_dim(state_dim), action_dim(action_dim), hidden_dim(hidden_dim),
+    Critic(int state_dim, int hidden_dim)
+        : state_dim(state_dim), hidden_dim(hidden_dim),
         fc1(nullptr), fc2(nullptr)
     {
         reset();
@@ -35,7 +35,6 @@ public:
     }
 
     int state_dim;
-    int action_dim;
     int hidden_dim;
     torch::nn::Linear fc1;
     torch::nn::Linear fc2;

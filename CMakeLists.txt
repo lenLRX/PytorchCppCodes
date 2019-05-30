@@ -6,7 +6,10 @@ add_subdirectory("SimDota2")
 
 include_directories(.)
 set(RAPIDJSON_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/SimDota2/thirdparty/rapidjson/include")
+set(SPDLOG_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/SimDota2/thirdparty/spdlog/include")
 include_directories(${RAPIDJSON_INCLUDE_DIRS})
+include_directories(${SPDLOG_INCLUDE_DIRS})
+
 add_executable (A3CMain 
 "A3CMain.cpp" "ActorCritic.h"
 "A3CEnv.h" "A3CEnv.cpp"
@@ -53,7 +56,7 @@ add_executable (GAIL_Tree
 "GAIL_Tree/ActionChoice.h" "GAIL_Tree/ActionChoice.cpp"
 "GAIL_Tree/LastHitMode.h" "GAIL_Tree/LastHitMode.cpp"
 "GAIL_Tree/MovingMode.h" "GAIL_Tree/MovingMode.cpp"
-"GAIL_Tree/Critic.h" "GAIL_Tree/main.cpp")
+"GAIL_Tree/Critic.h" "GAIL_Tree/main.cpp" GAIL_Tree/Trainer.h GAIL_Tree/Trainer.cpp)
 
 target_link_libraries(GAIL_Tree "${TORCH_LIBRARIES}" cppSimulator)
 set_property(TARGET GAIL_Tree PROPERTY CXX_STANDARD 11)

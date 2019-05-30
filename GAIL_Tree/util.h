@@ -8,6 +8,14 @@ const static float lr = 1e-4;
 static const float near_by_scale = 2000;
 static const int state_dim = 10;
 
+template <typename T>
+std::string torch_to_string(const T& data) {
+    std::stringstream ss;
+    ss << data;
+    return ss.str();
+}
+
+
 template<typename T>
 T toNumber(torch::Tensor x) {
     return x.item().to<T>();
@@ -77,6 +85,7 @@ static int get_move_dir(float x, float y) {
             return 5;
         }
     }
+    return -1;
 }
 
 static torch::Tensor state_encoding(cppSimulatorImp* engine) {

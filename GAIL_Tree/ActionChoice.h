@@ -4,13 +4,16 @@
 
 class ActionChoice : public ModelNode {
 public:
-    ActionChoice(int input_dim=10, int hidden_dim=32, int output_dim = 2);
+    explicit ActionChoice(int input_dim=10, int hidden_dim=32, int output_dim = 2);
 
-    virtual const std::string& type() { return "ActionChoice"; }
+    const std::string& type() override {
+        static const std::string type_name = "ActionChoice";
+        return type_name;
+    }
 
-    virtual void step(cppSimulatorImp* engine, bool default_action);
+    void step_impl(cppSimulatorImp* engine, bool default_action) override ;
 
-    virtual void train(const std::vector<PackedData>& data);
+    void train(const std::vector<PackedData>& data, int episode) override ;
 
 private:
     int get_default(torch::Tensor x);

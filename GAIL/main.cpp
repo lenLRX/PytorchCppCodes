@@ -100,7 +100,7 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    float lr = 1E-5;
+    float lr = 1E-3;
 
     torch::optim::SGD actor_optim(shared_actor_net->parameters(),
         torch::optim::SGDOptions(lr));

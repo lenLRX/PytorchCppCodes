@@ -5,10 +5,11 @@ set(CMAKE_CXX_STANDARD 11)
 
 #header only lib, just include headers
 set(RAPIDJSON_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/SimDota2/thirdparty/rapidjson/include")
+set(SPDLOG_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/SimDota2/thirdparty/spdlog/include")
 
 include_directories(include)
 include_directories(${RAPIDJSON_INCLUDE_DIRS})
-message("rapidjson: " ${RAPIDJSON_INCLUDE_DIRS})
+include_directories(${SPDLOG_INCLUDE_DIRS})
 
 file(GLOB HEADERS include/*.h)
 file(GLOB HEADERS include/Ability/*.h)
